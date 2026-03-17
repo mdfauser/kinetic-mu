@@ -7,6 +7,7 @@ class RepresentationNet():
         pass
 
     def forward():
+        # return zero-tensor for testing
         pass
 
 
@@ -16,6 +17,7 @@ class DynamicNet():
         pass
 
     def forward():
+        # return zero-tensor
         pass
 
 
@@ -25,4 +27,5 @@ class PredictionNet():
         pass
 
     def forward():
+        # return random numbers and policy
         pass
