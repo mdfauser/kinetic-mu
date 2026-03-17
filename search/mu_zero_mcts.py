@@ -8,28 +8,34 @@ class MuZeroMCTS():
     def __init__(self, num_simulations):
         self.num_simulations = num_simulations
 
-    def policy_out(params, rng_key, root):
+    def root_fn(self, real_observation):
+        # turns real game pixels into the first inital hidden state
+        # runs once per real-world turn
+        hidden_state = RepresentationNet(real_observation)
 
-        def root_fn():
-            # turns real game pixels into the first inital hidden state
-            pass
+        prior_logits, value = PredictionNet(hidden_state)
 
-        def recurrent_fn(hidden_state, action):
-            # called on the leaf nodes and unvisited actions retrieved by the simulation step
-            # returns the probability distribution of which move is actually best
-            # shape of hidden_state and next_hidden_state (batch size, .. features) and normalized
+        return prior_logits, value, hidden_state  # RootFnOutput
 
-            imagined_reward, imagined_next_hidden_state = DynamicNet(
-                hidden_state, action)  # not implemented yet
+    def recurrent_fn(self, hidden_state, action):
+        # called on the leaf nodes and unvisited actions retrieved by the simulation step
+        # returns the probability distribution of which move is actually best
+        # shape of hidden_state and next_hidden_state (batch size, .. features) and normalized
 
-            policy, value = PredictionNet(imagined_next_hidden_state)
+        imagined_reward, imagined_next_hidden_state = DynamicNet(
+            hidden_state, action)  # not implemented yet
 
-            assert hidden_state.shape == imagined_next_hidden_state.shape
+        assert hidden_state.shape == imagined_next_hidden_state.shape
 
-            return policy
+        prior_logits, value = PredictionNet(imagined_next_hidden_state)
 
+        discount = jnp.full_like(imagined_reward, fill_value=0.99)
+
+        return imagined_reward, discount, prior_logits, value,  # RecurrentFnOutput
+
+    def policy_out(self, params, rng_key):
         # TODO needs to play in loop against itseld
-        return mctx.muzero_policy(params=params, rng_key=rng_key, root=root, recurrent_fn=recurrent_fn(), num_simulations=self.num_simulations)
+        return mctx.muzero_policy(params=params, rng_key=rng_key, root=self.root_fn, recurrent_fn=self.recurrent_fn, num_simulations=self.num_simulations)
 
     # in the training loop we are sampling a trajectory and unroll our model K steps to calculate the loss.
     # gradients need to flow from K steps all the way back to the initial representation network
