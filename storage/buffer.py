@@ -17,7 +17,7 @@ class MuZeroTransition:
 @chex.dataclass
 class PrioritizedReplayBuffer:
     data: MuZeroTransition
-    prioriies: chex.Array
+    priorities: chex.Array
     position: int
 
     def add_trajectory(self, new_traj, slot):
@@ -30,6 +30,31 @@ class PrioritizedReplayBuffer:
         # Return a new buffer object with the updated data
         return self.replace(data=new_data)
 
+    def sample(self, key, batch_size):
+        probs = self.priorities / jnp.sum(self.priorities)
+        idx = jax.random.choice(key, self.size, shape=(
+            batch_size, ), p=probs[:self.size])
+        return jax.tree_util_map(lambda x: x[idx], self.data)
+
+    def compute_n_step_targets(self, n_steps, disocunt_factor):
+        """Calculate the N-step returns."""
+        pass
+        # n_step_return = jax.tree_util.tree_map(
+        #     lambda reward, value:
+        # )
+
+    def update_priorities(self, indices, new_td_errors):
+        pass
+
+    def smaple_windows(self, key, batch_size, window_size):
+        """picking random row and start time within that row"""
+
+        pass
+
+    def is_ready(self, min_size):
+        """making sure to only sample from the spots which are occupied"""
+        pass
+
 
 def init_prioritized_buffer(max_seq, seq_len, obs_shape):
     buffer_data = MuZeroTransition(
@@ -41,6 +66,6 @@ def init_prioritized_buffer(max_seq, seq_len, obs_shape):
     )
     return PrioritizedReplayBuffer(
         data=buffer_data,
-        prioriies=jnp.zeros((max_seq,)),
+        priorities=jnp.zeros((max_seq,)),
         position=0
     )
