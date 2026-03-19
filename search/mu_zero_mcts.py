@@ -21,6 +21,7 @@ class MuZeroMCTS():
         # TODO store outside
         self._current_action = None
         self._current_obs = None
+        self.evaluation_mode = False
 
     def root_fn(self, real_observation):
         # turns real game pixels into the first inital hidden state
@@ -47,8 +48,18 @@ class MuZeroMCTS():
 
         return mctx.RecurrentFnOutput(reward=imagined_reward, discount=discount, prior_logits=prior_logits, value=value), imagined_next_hidden_state
 
-    def policy_out(self, params, rng_key, real_observation):
+    def policy_out(self, params, rng_key, root):
 
+        # TODO Before calling mctx, you set the prior_logits of illegal moves to a very large negative
+
+        # TODO needs to play in loop against itseld
+        policy_output = mctx.muzero_policy(
+            params=params, rng_key=rng_key, root=root, recurrent_fn=self.recurrent_fn, num_simulations=self.num_simulations, temperature=self.temperature)
+
+        return policy_output
+
+    def select_action(self, params, rng_key, real_observation):
+        """Pick the next action for the real world."""
         root = self.root_fn(
             real_observation=real_observation)
 
@@ -63,9 +74,15 @@ class MuZeroMCTS():
         noisy_root = mctx.RootFnOutput(
             prior_logits=noisy_prior_logits, value=value, embedding=embedding)
 
-        # TODO needs to play in loop against itseld
-        policy_output = mctx.muzero_policy(
-            params=params, rng_key=rng_key, root=noisy_root, recurrent_fn=self.recurrent_fn, num_simulations=self.num_simulations, temperature=self.temperature)
+        policy_out = self.policy_out(params, rng_key, noisy_root)
+
+        visit_counts = policy_out.action_weights
+        if self.evaluation_mode:
+            action = jnp.argmax(visit_counts)
+
+        else:
+            # TODO Use a temperature-scaled sample
+            action = jnp.random.categorical(rng_key, jnp.log(visit_counts))
 
         # TODO this needs to be placed somewhere outside
         # self.game.store(policy_output.action)
@@ -74,7 +91,7 @@ class MuZeroMCTS():
         # self.buffer.store(policy_output.action_weights, self._current_obs, self._current_action, policy_output.search_tree.summary().value
         #   )
 
-        return policy_output
+        return action
 
     # in the training loop we are sampling a trajectory and unroll our model K steps to calculate the loss.
     # gradients need to flow from K steps all the way back to the initial representation network
