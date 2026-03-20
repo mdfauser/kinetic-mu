@@ -18,41 +18,54 @@ class MuZeroTransition:
 class PrioritizedReplayBuffer:
     data: MuZeroTransition
     priorities: chex.Array
+    game_lengths: chex.Array
     position: int
-    max_size: int
+    max_games: int
     size: int
 
-    def add_trajectory(self, new_traj, slot):
+    def add_game(self, game_traj, game_length):
         # Update the nested Transition data
         new_data = jax.tree_util.tree_map(
-            lambda buf_arr, traj_arr: buf_arr.at[slot].set(traj_arr),
+            lambda buf_arr, traj_arr: buf_arr.at[self.position].set(traj_arr),
             self.data,
-            new_traj
+            game_traj
         )
 
         # set priority to maximum (1.0)
-        new_priorities = self.prioritiesat[slot].set(1.0)
+        new_priorities = self.priorities[self.position].set(1.0)
+        new_lengths = self.game_lengths.at[self.position].set(game_length)
+        new_pos = (self.position + 1) % self.max_games
+        new_size = jnp.minimum(self.size + 1, self.max_games)
 
-        new_pos = (self.position + 1) % self.max_size
-        new_size = jnp.minimum(self.size + 1, self.max_size)
+        return self.replace(data=new_data, priorities=new_priorities, game_lengths=new_lengths, position=new_pos, size=new_size)
 
-        return self.replace(data=new_data, priorities=new_priorities, position=new_pos, size=new_size)
+    def prioritized_sample(self, key, unroll_steps,  batch_size, alpha=0.9, beta=0.6):
+        # valid priorities/occupied spots in buffer
+        valid_priorities = self.priorities[:self.size]
 
-    def prioritized_sample(self, key, batch_size, alpha=0.9, beta=0.6):
         # TODO scheduler for the beta 0.4 -> 1.0
         # use logits for sampling
-        scaled_priorities = jnp.power(self.priorities, alpha)
+        scaled_priorities = jnp.power(valid_priorities, alpha)
         logits = jnp.log(scaled_priorities)
-        # we also use Importance Sampling to reduce the bias
-        probs = self.priorities / jnp.sum(self.priorities)
-        importance_weights = jnp.power(((1.0/self.size) * (1.0/probs)), beta)
-        # normalize the weights
-        importance_weights = importance_weights / jnp.max(importance_weights)
 
-        idx = jax.random.categorical(key, self.size, logits, shape=(
+        k1, k2 = jax.random.split(key)
+        game_idx = jax.random.categorical(key, k1, logits, shape=(
             batch_size, ))
 
-        return jax.tree_util.tree_map(lambda x: x[idx], self.data), idx, importance_weights
+        # we also use Importance Sampling to reduce the bias
+        probs = valid_priorities / jnp.sum(valid_priorities)
+        all_weights = jnp.power(((1.0/self.size) * (1.0/probs)), beta)
+        # normalize the weights
+        importance_weights = all_weights[game_idx] / jnp.max(all_weights)
+
+        batch_lengths = self.game_lengths[game_idx]
+        max_possible_starts = jnp.maximum(0, batch_lengths - unroll_steps)
+
+        start_times = jax.random.uniform(k2, shape=(
+            batch_size, )) * max_possible_starts
+        start_times = start_times.astype(jnp.int32)
+
+        return jax.tree_util.tree_map(lambda x: x[start_times], self.data), start_times, importance_weights
 
     def compute_n_step_targets(self, rewards, values, n_steps, gamma):
         """Calculate the N-step returns."""
@@ -79,14 +92,26 @@ class PrioritizedReplayBuffer:
 
         return self.replace(selfpriorities=updated_priorities_array)
 
-    def smaple_windows(self, key, batch_size, window_size):
+    def get_window(self, start_idx, window_size):
         """picking random row and start time within that row"""
 
-        pass
+        return jax.lax.dynamic_slice_in_dim(self.data, start_idx, window_size, axis=0)
 
-    def is_ready(self, min_size):
+    def sample_windows(self, start_idx, window_size, key, batch_size, alpha=0.9, beta=0.6):
+        prioritized_samples, start_idx, importance_weights = self.prioritized_sample(
+            key, window_size, batch_size, alpha, beta)
+
+        # get the window for each picked sample
+        return jax.vmap(self.get_window, in_axes=(0, 0, None))(
+            self.data,
+            start_idx,
+            window_size=window_size
+        )
+
+    def is_ready(self, batch_size):
         """making sure to only sample from the spots which are occupied"""
-        pass
+
+        return self.size >= batch_size
 
 
 def init_prioritized_buffer(max_seq, seq_len, obs_shape):
@@ -100,7 +125,8 @@ def init_prioritized_buffer(max_seq, seq_len, obs_shape):
     return PrioritizedReplayBuffer(
         data=buffer_data,
         priorities=jnp.zeros((max_seq,)),
+        game_lengths=0,
         position=0,
-        max_size=1000,
+        max_games=1000,
         size=0
     )
