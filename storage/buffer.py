@@ -30,21 +30,33 @@ class PrioritizedReplayBuffer:
             new_traj
         )
 
+        # set priority to maximum (1.0)
+        new_priorities = self.prioritiesat[slot].set(1.0)
+
         new_pos = (self.position + 1) % self.max_size
         new_size = jnp.minimum(self.size + 1, self.max_size)
 
-        return self.replace(data=new_data, position=new_pos, size=new_size)
+        return self.replace(data=new_data, priorities=new_priorities, position=new_pos, size=new_size)
 
-    def sample(self, key, batch_size):
+    def prioritized_sample(self, key, batch_size, alpha=0.9, beta=0.6):
+        # TODO scheduler for the beta 0.4 -> 1.0
+        # use logits for sampling
+        scaled_priorities = jnp.power(self.priorities, alpha)
+        logits = jnp.log(scaled_priorities)
+        # we also use Importance Sampling to reduce the bias
         probs = self.priorities / jnp.sum(self.priorities)
+        importance_weights = jnp.power(((1.0/self.size) * (1.0/probs)), beta)
+        # normalize the weights
+        importance_weights = importance_weights / jnp.max(importance_weights)
 
-        idx = jax.random.choice(key, self.size, shape=(
-            batch_size, ), p=probs[:self.size])
+        idx = jax.random.categorical(key, self.size, logits, shape=(
+            batch_size, ))
 
-        return jax.tree_util_map(lambda x: x[idx], self.data)
+        return jax.tree_util.tree_map(lambda x: x[idx], self.data), idx, importance_weights
 
     def compute_n_step_targets(self, rewards, values, n_steps, gamma):
         """Calculate the N-step returns."""
+        # TODO add mask to cut off steps to ensure rewards and values are 0 after the game ended
         bootstrap_values = jnp.roll(values, -n_steps)
 
         discounted_bootstrap = (gamma ** n_steps) * bootstrap_values
@@ -61,8 +73,11 @@ class PrioritizedReplayBuffer:
 
         return reward_sums[:len(rewards)] + discounted_bootstrap
 
-    def update_priorities(self, indices, new_td_errors):
-        pass
+    def update_priorities(self, indices, td_errors, epsilon=1e-6):
+        new_priorities = jnp.abs(td_errors) + epsilon
+        updated_priorities_array = self.priorities.at[indices].set[new_priorities]
+
+        return self.replace(selfpriorities=updated_priorities_array)
 
     def smaple_windows(self, key, batch_size, window_size):
         """picking random row and start time within that row"""
