@@ -113,6 +113,10 @@ class PrioritizedReplayBuffer:
 
         return self.size >= batch_size
 
+    def get_status(self):
+        """returns current average rewards and buffer size"""
+        return jnp.average(self.data.reward), self.size
+
 
 def init_prioritized_buffer(max_seq, seq_len, obs_shape):
     buffer_data = MuZeroTransition(

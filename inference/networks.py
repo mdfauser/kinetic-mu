@@ -1,10 +1,12 @@
 import jax
-import haiku as hk
 import jax.numpy as jnp
+import flax.linen as nn
 
 
-class RepresentationNet():
-    def __init__(self):
+class RepresentationNet(nn.Module):
+    hidden_dim: int
+
+    def __call__(self, x):
         pass
 
     def forward(self, obs):
