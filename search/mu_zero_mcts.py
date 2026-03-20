@@ -82,14 +82,7 @@ class MuZeroMCTS():
 
         else:
             # TODO Use a temperature-scaled sample
-            action = jnp.random.categorical(rng_key, jnp.log(visit_counts))
-
-        # TODO this needs to be placed somewhere outside
-        # self.game.store(policy_output.action)
-        # action_weights are the normalized visit counts of the root -> policy
-        # the search_tree provides a value in the root (weighted average of all rewards and future values discovered in dream steps)
-        # self.buffer.store(policy_output.action_weights, self._current_obs, self._current_action, policy_output.search_tree.summary().value
-        #   )
+            action = jax.random.categorical(rng_key, jnp.log(visit_counts))
 
         return action
 
