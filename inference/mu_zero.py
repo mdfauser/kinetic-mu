@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 
 from search.mu_zero_mcts import MuZeroMCTS
-from storage.buffer import MuZeroTransition, PrioritizedReplayBuffer
+from storage.buffer import MuZeroTransition, PrioritizedReplayBuffer, init_prioritized_buffer
 
 
 class MuZero():

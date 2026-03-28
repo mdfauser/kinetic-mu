@@ -1,7 +1,7 @@
 import chex
 import jax.numpy as jnp
 import jax
-
+from functools import partial
 
 @chex.dataclass
 class MuZeroTransition:
@@ -39,9 +39,10 @@ class PrioritizedReplayBuffer:
 
         return self.replace(data=new_data, priorities=new_priorities, game_lengths=new_lengths, position=new_pos, size=new_size)
 
-    def prioritized_sample(self, key, unroll_steps,  batch_size, alpha=0.9, beta=0.6):
+    @partial(jax.jit, static_argnums=(2,))
+    def sample_prioritized(buffer_data, key, window_size,  batch_size, alpha=0.9, beta=0.6):
         # valid priorities/occupied spots in buffer
-        valid_priorities = self.priorities[:self.size]
+        valid_priorities = buffer_data.priorities[:buffer_data.size]  
 
         # TODO scheduler for the beta 0.4 -> 1.0
         # use logits for sampling
@@ -49,23 +50,46 @@ class PrioritizedReplayBuffer:
         logits = jnp.log(scaled_priorities)
 
         k1, k2 = jax.random.split(key)
-        game_idx = jax.random.categorical(key, k1, logits, shape=(
+        game_idxs = jax.random.categorical(key, k1, logits, shape=(
             batch_size, ))
 
         # we also use Importance Sampling to reduce the bias
         probs = valid_priorities / jnp.sum(valid_priorities)
-        all_weights = jnp.power(((1.0/self.size) * (1.0/probs)), beta)
+        all_weights = jnp.power(((1.0/buffer_data.size) * (1.0/probs)), beta)
         # normalize the weights
-        importance_weights = all_weights[game_idx] / jnp.max(all_weights)
+        importance_weights = all_weights[game_idxs] / jnp.max(all_weights)
 
-        batch_lengths = self.game_lengths[game_idx]
-        max_possible_starts = jnp.maximum(0, batch_lengths - unroll_steps)
+        batch_lengths = buffer_data.game_lengths[game_idxs]
+        max_possible_starts = jnp.maximum(0, batch_lengths - window_size)
 
-        start_times = jax.random.uniform(k2, shape=(
-            batch_size, )) * max_possible_starts
+        k2, k_step = jax.random.split(k2)
+
+        start_times = jax.random.randint(k_step, (batch_size,), 0, jnp.maximum(1, max_possible_starts))
         start_times = start_times.astype(jnp.int32)
 
-        return jax.tree_util.tree_map(lambda x: x[start_times], self.data), start_times, importance_weights
+        def sample_windows(start_time, game_idx):
+
+            def get_window(array):
+                return jax.lax.dynamic_slice(
+                array, 
+                (game_idx, start_time, 0), 
+                (1, window_size, array.shape[-1])
+                )
+
+            return jax.tree_util.tree_map(get_window, buffer_data)
+
+            # get the window for each picked sample
+        batch_with_extra_dim = jax.vmap(sample_windows, in_axes=(0, 0))(
+            start_times,
+            game_idxs
+        )
+        # Clean up: Remove the "1" dimension created by the slice
+        sampled_batch = jax.tree_util.tree_map(
+            lambda x: x.squeeze(1), 
+            batch_with_extra_dim
+        )
+        return sampled_batch, importance_weights
+
 
     def compute_n_step_targets(self, rewards, values, n_steps, gamma):
         """Calculate the N-step returns."""
@@ -90,23 +114,7 @@ class PrioritizedReplayBuffer:
         new_priorities = jnp.abs(td_errors) + epsilon
         updated_priorities_array = self.priorities.at[indices].set[new_priorities]
 
-        return self.replace(selfpriorities=updated_priorities_array)
-
-    def get_window(self, start_idx, window_size):
-        """picking random row and start time within that row"""
-
-        return jax.lax.dynamic_slice_in_dim(self.data, start_idx, window_size, axis=0)
-
-    def sample_windows(self, start_idx, window_size, key, batch_size, alpha=0.9, beta=0.6):
-        prioritized_samples, start_idx, importance_weights = self.prioritized_sample(
-            key, window_size, batch_size, alpha, beta)
-
-        # get the window for each picked sample
-        return jax.vmap(self.get_window, in_axes=(0, 0, None))(
-            self.data,
-            start_idx,
-            window_size=window_size
-        )
+        return self.replace(priorities=updated_priorities_array)
 
     def is_ready(self, batch_size):
         """making sure to only sample from the spots which are occupied"""
