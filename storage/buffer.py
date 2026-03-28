@@ -11,9 +11,6 @@ class MuZeroTransition:
     root_value: chex.Array
     child_visits: chex.Array
 
-# needs to store (Observation, Action, Reward, Search Policy, Search Value)
-
-
 @chex.dataclass
 class PrioritizedReplayBuffer:
     data: MuZeroTransition
@@ -117,7 +114,7 @@ class PrioritizedReplayBuffer:
         return self.replace(priorities=updated_priorities_array)
 
     def is_ready(self, batch_size):
-        """making sure to only sample from the spots which are occupied"""
+        """Making sure to only sample when the actual size meets the batch size"""
 
         return self.size >= batch_size
 
