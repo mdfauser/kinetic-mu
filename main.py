@@ -1,62 +1,52 @@
 from collections import deque
-
+import jax
+import jax.numpy as jnp
+import numpy as np
 import gymnasium as gym
-import torch
-import numpy
 from stable_baselines3 import PPO
-import supersuit as ss
+from inference.mu_zero import MuZero
 
-from pettingzoo.butterfly import pistonball_v6
+env = gym.make("CartPole-v1", render_mode=None)
 
-# env = pistonball_v6.parallel_env(
-#     n_pistons=3, render_mode=None, continuous=False)
-# env = ss.color_reduction_v0(env, mode='B')
-# env = ss.resize_v1(env, x_size=84, y_size=84)
-# env = ss.frame_stack_v1(env, 3)
+obs_shape = env.observation_space.shape
+key, subkey = jax.random.PRNGKey(42)
 
-# env = ss.pettingzoo_env_to_vec_env_v1(env)
-# env = ss.concat_vec_envs_v1(
-#     env, num_vec_envs=1, num_cpus=1, base_class='stable_baselines3')
+# model = MuZero(batch_size=16, num_simulations=10, max_seq=100, seq_len=20, obs_shape=obs_shape, key=key, unroll_steps=key)
 
-# env = ss.normalize_obs_v0(env)
-# env = ss.clip_reward_v0(env, lower_bound=-1, upper_bound=1)
-env = gym.make("CartPole-v1", render_mode="rgb_array")
-
-
-model = PPO(
-    "CnnPolicy",
-    env,
-    learning_rate=1e-4,       # Much lower than default
-    n_steps=1024,             # Larger buffer to average out noise
-    batch_size=64,            # Smaller batch for 3-agent focus
-    gae_lambda=0.95,          # Standard for stability
-    target_kl=0.01,           # Forces the update to stay small
-    verbose=1
-)
-
-print("start learning ...")
-model.learn(total_timesteps=500000)
-print("end learning")
+train_ppo = False
+if train_ppo:
+    print("start trainign PPO ...")
+    model = PPO(
+        "CnnPolicy",
+        env,
+        learning_rate=1e-4,       # Much lower than default
+        n_steps=1024,             # Larger buffer to average out noise
+        batch_size=64,            # Smaller batch for 3-agent focus
+        gae_lambda=0.95,          # Standard for stability
+        target_kl=0.01,           # Forces the update to stay small
+        verbose=1
+    )
+    model.learn(total_timesteps=500000)
 
 obs = env.reset()
 
 successes = deque([], maxlen=100)
+done = False
+list_rewards = []
+
 print("start training")
 for e in range(1000):
-    action, _states = model.predict(obs, deterministic=True)
+    rewards = 0
+    while not(done):
+        action = np.random.randint(1, size=1)
+        # model.train(env) #TODO implement the training loop
+        obs, reward, done, info, _ = env.step(action[0])
+        rewards += reward
 
-    obs, reward, terminated, info = env.step(action)
-    if terminated.any():
-        obs = env.reset()
+    obs = env.reset()
+    list_rewards.append(rewards)
 
-    if "terminal_observation" in info[0]:
-        final_reward = info[0].get("episode", {}).get("r", 0)
-        is_success = 1 if final_reward > 90 else 0
-        successes.append(is_success)
-        print(f"Episode Ended. Success: {is_success}")
-
-    if e % 100 == 0:
-        print(f"total episodes: {e} | success rate:{sum(successes)} ")
+print(f"total episodes: {e} | avg return:{sum(list_rewards)/100} ")
 
 env.close()
 
