@@ -23,10 +23,10 @@ if __name__ == "__main__":
     buffer = init_prioritized_buffer(max_seq, seq_len, obs_shape, A)
 
     real_obs = np.zeros(obs_shape)
-    action = np.zeros(A, dtype=jnp.int32),
-    reward = np.zeros(1)
-    root_value = np.zeros(1)
-    child_visits = np.zeros((A, 1))
+    action = np.ones(A)
+    reward = np.array(0.0)
+    root_value = np.array(0.0)
+    child_visits = np.zeros(A)
 
     game_list = []
     for _ in range(seq_len):
@@ -41,4 +41,11 @@ if __name__ == "__main__":
 
     jax_game = game_to_jax(game_list)
 
-    buffer.add_game(jax_game, seq_len)
+    new_buffer = buffer.add_game(jax_game, seq_len)
+
+    # test update priorities
+    indicies = np.zeros(2, dtype=int)
+    indicies[0] = 5
+    indicies[1] = 1
+    later_buffer = new_buffer.update_priorities(indicies, indicies)
+    print(later_buffer.priorities)

@@ -14,19 +14,9 @@ class MuZero():
         self.batch_size = batch_size
         self.unroll_steps = unroll_steps
 
-    def game_to_jax(self, game_list, max_len):
-        game_tree = jax.tree_util.tree_map(lambda *xs: jnp.array(xs), *game_list)
-        
-        current_len = len(game_list)
-        pad_amount = max_len - current_len
-        
-        # 3. Apply padding (zeros) so it fits your buffer's 2D structure
-        def pad_fn(x):
-            # Adds zeros to the 'time' dimension
-            pad_shape = [(0, pad_amount)] + [(0, 0)] * (x.ndim - 1)
-            return jnp.pad(x, pad_shape)
-        
-        return jax.tree_util.tree_map(pad_fn, game_tree), current_len
+    def game_to_jax(game_list):
+        stacked_traj = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *game_list)
+        return stacked_traj
 
     def train(self, env, real_obs):
 

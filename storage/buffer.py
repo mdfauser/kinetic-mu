@@ -22,6 +22,7 @@ class PrioritizedReplayBuffer:
 
     def add_game(self, game_traj, game_length):
         # Update the nested Transition data
+
         new_data = jax.tree_util.tree_map(
             lambda buf_arr, traj_arr: buf_arr.at[self.position].set(traj_arr),
             self.data,
@@ -29,7 +30,7 @@ class PrioritizedReplayBuffer:
         )
 
         # set priority to maximum (1.0)
-        new_priorities = self.priorities[self.position].set(1.0)
+        new_priorities = self.priorities.at[self.position].set(1.0)
         new_lengths = self.game_lengths.at[self.position].set(game_length)
         new_pos = (self.position + 1) % self.max_games
         new_size = jnp.minimum(self.size + 1, self.max_games)
@@ -109,7 +110,7 @@ class PrioritizedReplayBuffer:
 
     def update_priorities(self, indices, td_errors, epsilon=1e-6):
         new_priorities = jnp.abs(td_errors) + epsilon
-        updated_priorities_array = self.priorities.at[indices].set[new_priorities]
+        updated_priorities_array = self.priorities.at[indices].set(new_priorities)
 
         return self.replace(priorities=updated_priorities_array)
 
@@ -126,7 +127,7 @@ def init_prioritized_buffer(max_seq, seq_len, obs_shape, act_shape, max_games=10
     buffer_data = MuZeroTransition(
         observation=jnp.zeros((max_seq, seq_len, *obs_shape)),
         action=jnp.zeros(
-            (max_seq, seq_len), dtype=jnp.int32),
+            (max_seq, seq_len, act_shape), dtype=jnp.int32),
         reward=jnp.zeros((max_seq, seq_len)),
         root_value=jnp.zeros((max_seq, seq_len)),
         child_visits=jnp.zeros((max_seq, seq_len, act_shape ))
