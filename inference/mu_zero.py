@@ -15,11 +15,8 @@ class MuZero():
         self.unroll_steps = unroll_steps
 
     def game_to_jax(self, game_list, max_len):
-    # 1. Convert list of dicts/tuples into a single PyTree of arrays
-        # This turns [{obs: 1}, {obs: 2}] into {obs: [1, 2]}
         game_tree = jax.tree_util.tree_map(lambda *xs: jnp.array(xs), *game_list)
         
-        # 2. Calculate padding
         current_len = len(game_list)
         pad_amount = max_len - current_len
         
@@ -54,5 +51,5 @@ class MuZero():
         # STEP 2 - Planning
         # STEP 3 - Learning
         # TODO make unroll_steps maybe part of the obj instead of parameters
-        prioritized_samples = self.buffer.prioritized_sample(self.key, self.unroll_steps, self.batch_size)
+        prioritized_samples, _, importance_weights = self.buffer.prioritized_sample(self.key, self.unroll_steps, self.batch_size)
         

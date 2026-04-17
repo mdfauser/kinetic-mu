@@ -115,7 +115,6 @@ class PrioritizedReplayBuffer:
 
     def is_ready(self, batch_size):
         """Making sure to only sample when the actual size meets the batch size"""
-
         return self.size >= batch_size
 
     def get_status(self):
@@ -123,19 +122,20 @@ class PrioritizedReplayBuffer:
         return jnp.average(self.data.reward), self.size
 
 
-def init_prioritized_buffer(max_seq, seq_len, obs_shape):
+def init_prioritized_buffer(max_seq, seq_len, obs_shape, act_shape, max_games=1000):
     buffer_data = MuZeroTransition(
         observation=jnp.zeros((max_seq, seq_len, *obs_shape)),
         action=jnp.zeros(
             (max_seq, seq_len), dtype=jnp.int32),
         reward=jnp.zeros((max_seq, seq_len)),
-        value=jnp.zeros((max_seq, seq_len))
+        root_value=jnp.zeros((max_seq, seq_len)),
+        child_visits=jnp.zeros((max_seq, seq_len, act_shape ))
     )
     return PrioritizedReplayBuffer(
         data=buffer_data,
         priorities=jnp.zeros((max_seq,)),
-        game_lengths=0,
+        game_lengths=jnp.zeros((max_seq,)),
         position=0,
-        max_games=1000,
+        max_games=max_games,
         size=0
     )

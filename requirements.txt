@@ -1,0 +1,39 @@
+# JAX Core & GPU (Handles jaxlib and plugins)
+jax[cuda13]>=0.6.2
+
+# Deep Learning & Reinforcement Learning
+flax==0.10.7
+optax==0.2.8
+chex==0.1.90
+mctx==0.0.5
+orbax-checkpoint==0.11.33
+gymnasium==1.2.3
+Farama-Notifications==0.0.4
+
+# Numerical & Data Science
+numpy>=2.2.6
+scipy==1.15.3
+ml_dtypes==0.5.4
+opt_einsum==3.4.0
+tensorstore==0.1.78
+
+# Utilities & System
+absl-py==2.4.0
+aiofiles==25.1.0
+cloudpickle==3.1.2
+etils==1.13.0
+fsspec==2026.2.0
+humanize==4.15.0
+psutil==7.2.2
+rich==14.3.3
+PyYAML==6.0.3
+simplejson==3.20.2
+toolz==1.1.0
+treescope==0.1.10
+uvloop==0.22.1
+typing_extensions==4.15.0
+
+# Documentation & Formatting
+markdown-it-py==4.0.0
+mdurl==0.1.2
+Pygments==2.19.2

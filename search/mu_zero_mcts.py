@@ -83,8 +83,8 @@ class MuZeroMCTS():
         else:
             # TODO Use a temperature-scaled sample
             action = jax.random.categorical(rng_key, jnp.log(visit_counts))
-
-        return action
+        # TODO is the root.value what we want?
+        return action, root.value, visit_counts
 
     # in the training loop we are sampling a trajectory and unroll our model K steps to calculate the loss.
     # gradients need to flow from K steps all the way back to the initial representation network
